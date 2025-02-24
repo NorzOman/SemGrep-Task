@@ -4,6 +4,7 @@ import urllib.request
 import zipfile
 import datetime
 import shutil
+import platform
 
 # Defining global variables
 is_apt = False
