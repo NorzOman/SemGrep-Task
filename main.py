@@ -3,6 +3,7 @@ import time
 import urllib.request
 import zipfile
 import datetime
+import shutil
 
 # Defining global variables
 is_apt = False
