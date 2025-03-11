@@ -58,3 +58,9 @@ The tool creates a workspace at `~/SemGrepTool/` containing:
   - Affected file and line number
   - Code snippet
   - Detailed description
+
+
+Demo:
+
+https://github.com/user-attachments/assets/e4385c12-5d75-4c23-9671-0e4b6b37f7d7
+
