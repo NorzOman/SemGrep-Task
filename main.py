@@ -5,10 +5,10 @@ import zipfile
 import datetime
 import shutil
 import platform
+import subprocess
+import json
 
 # Defining global variables
-is_apt = False
-is_dnf = False
 is_jadx = False
 is_pip = False
 is_semgrep = False
@@ -32,25 +32,15 @@ def banner():
     """)
 
 def check_requirements():
-    global is_apt, is_dnf, is_jadx, is_semgrep, is_pip
+    global is_jadx, is_semgrep, is_pip
     
     # Check OS
     os_name = platform.uname().system.lower()
     if "windows" in os_name:
         print('\n[!] Windows not supported by the script, check supported platforms on the github repo')
         exit(1)
-
-    # Check package managers
-    if shutil.which("apt"):
-        is_apt = True
-        print('\n[-] APT package manager found')
-        time.sleep(0.5)
-    elif shutil.which("dnf"):
-        is_dnf = True
-        print('\n[-] DNF package manager found')
-        time.sleep(0.5)
-    else:
-        print('\n[?] Neither APT nor DNF found')
+    elif "linux" not in os_name:
+        print('\n[!] Only Linux is supported by this script')
         exit(1)
 
     # Check required tools
@@ -78,7 +68,7 @@ def check_requirements():
         print('\n[!] Required tool pip was not found in the system...')
 
 def install_requirements():
-    global is_apt, is_dnf, is_pip, is_semgrep, is_jadx
+    global is_pip, is_semgrep, is_jadx
 
     # Setting up pip
     if not is_pip:
@@ -87,11 +77,13 @@ def install_requirements():
         if pip_choice == '' or pip_choice == 'y':
             print('\n[!] Installing pip...')
             time.sleep(0.5)
-            if is_apt:
-                os.system('sudo apt install python3-pip')
-            elif is_dnf:
-                os.system('sudo dnf install python3-pip')
-            is_pip = True
+            try:
+                subprocess.run(['sudo', 'apt-get', 'update'], check=True)
+                subprocess.run(['sudo', 'apt-get', 'install', '-y', 'python3-pip'], check=True)
+                is_pip = True
+            except subprocess.CalledProcessError:
+                print('\n[!] Failed to install pip. Please install it manually.')
+                exit(1)
         else:
             print('\n[!] pip installation rejected. Cannot proceed without pip. Exiting...')
             exit(1)
@@ -104,12 +96,10 @@ def install_requirements():
             print('\n[!] Installing semgrep...')
             time.sleep(0.5)
             try:
-                if os.system('pip install semgrep --break-system-packages') != 0:
-                    if os.system('pip3 install semgrep --break-system-packages') != 0:
-                        raise Exception("Failed to install semgrep")
+                subprocess.run(['python3', '-m', 'pip', 'install', 'semgrep', '--break-system-packages'], check=True)
                 is_semgrep = True
-            except Exception as e:
-                print('\n[!] Error installing semgrep: {str(e)}')
+            except subprocess.CalledProcessError:
+                print('\n[!] Failed to install semgrep')
                 exit(1)
         else:
             print('\n[!] semgrep installation rejected. Cannot proceed without semgrep. Exiting...')
@@ -151,11 +141,69 @@ def install_requirements():
                 os.remove(zip_path)
                 print('\n[-] jadx installed successfully')
             except Exception as e:
-                print('\n[!] Error installing jadx: {str(e)}')
+                print(f'\n[!] Error installing jadx: {str(e)}')
                 exit(1)
         else:
             print('\n[!] jadx installation rejected. Cannot proceed without jadx. Exiting...')
             exit(1)
+
+def generate_html_report(custom_output, output_dir):
+    try:
+        html_content = """
+        <html>
+        <head>
+            <title>Semgrep Analysis Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; }
+                h1 { color: #333; }
+                .finding { 
+                    border: 1px solid #ddd;
+                    padding: 15px;
+                    margin: 10px 0;
+                    border-radius: 5px;
+                }
+                .severity-high { border-left: 5px solid #ff4444; }
+                .severity-medium { border-left: 5px solid #ffbb33; }
+                .severity-low { border-left: 5px solid #00C851; }
+                .section { margin-bottom: 30px; }
+            </style>
+        </head>
+        <body>
+            <h1>Semgrep Analysis Report</h1>
+        """
+
+        # Process custom rules results
+        with open(custom_output) as f:
+            custom_data = json.load(f)
+        
+        html_content += "<div class='section'><h2>Custom Rules Results</h2>"
+        if custom_data.get('results'):
+            for finding in custom_data['results']:
+                severity = finding.get('extra', {}).get('severity', 'unknown')
+                html_content += f"""
+                <div class='finding severity-{severity.lower()}'>
+                    <h3>{finding.get('check_id', 'Unknown Check')}</h3>
+                    <p><strong>Severity:</strong> {severity}</p>
+                    <p><strong>Message:</strong> {finding.get('extra', {}).get('message', 'No message available')}</p>
+                    <p><strong>Path:</strong> {finding.get('path', 'Unknown path')}</p>
+                    <p><strong>Line:</strong> {finding.get('start', {}).get('line', 'Unknown line')}</p>
+                    <p><strong>Code:</strong> <pre>{finding.get('extra', {}).get('lines', 'No code available')}</pre></p>
+                </div>
+                """
+        else:
+            html_content += "<p>No findings from custom rules</p>"
+            
+        html_content += "</div></body></html>"
+
+        # Write HTML report
+        html_report = os.path.join(output_dir, 'semgrep_report.html')
+        with open(html_report, 'w') as f:
+            f.write(html_content)
+        
+        return html_report
+    except Exception as e:
+        print(f'\n[!] Error generating HTML report: {str(e)}')
+        return None
 
 def main():
     tool_dir = os.path.expanduser('~/SemGrepTool')
@@ -211,6 +259,10 @@ def main():
     if not os.path.exists(analysis_dir):
         os.makedirs(analysis_dir)
         
+    # Create output directory
+    output_dir = os.path.join(analysis_dir, 'output')
+    os.makedirs(output_dir)
+        
     # Copy APK to analysis directory
     new_apk_path = os.path.join(analysis_dir, os.path.basename(apk_path))
     shutil.copy2(apk_path, new_apk_path)
@@ -219,27 +271,38 @@ def main():
     decompiled_dir = os.path.join(analysis_dir, 'decompiledapk')
     print('\n[-] Decompiling APK...')
     try:
-        os.system(f'~/SemGrepTool/jadx/bin/jadx -d {decompiled_dir} {new_apk_path}')
-    except Exception as e:
-        print('\n[!] Error decompiling APK: {str(e)}')
+        subprocess.run([os.path.expanduser('~/SemGrepTool/jadx/bin/jadx'), '-d', decompiled_dir, new_apk_path], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f'\n[!] Error decompiling APK: {str(e)}')
         exit(1)
     
-    # Run semgrep
+    # Run semgrep with custom rules only
     print('\n[-] Running semgrep analysis using custom rules...')
-    rules_path = os.path.join(os.getcwd(), 'rules')
+    rules_path = custom_rules_path if is_custom_rules else git_cloned_rule
+    custom_output = os.path.join(output_dir, 'custom_rules_results.json')
     try:
-        os.system(f'semgrep scan --config={rules_path} {decompiled_dir}')
-    except Exception as e:
-        print('\n[!] Error running semgrep analysis: {str(e)}')
-        exit(1)
-    
-    print('\n[-] Running semgrep analysis using default rules...')
-    try:
-        os.system(f'semgrep scan --config=auto {decompiled_dir}')
-    except Exception as e:
-        print('\n[!] Error running semgrep analysis: {str(e)}')
-        exit(1)
+        subprocess.run([
+            'semgrep', 'scan',
+            '--config', rules_path,
+            '--output', custom_output,
+            '--json',
+            decompiled_dir
+        ], check=True)
         
+        # Generate HTML report
+        html_report = generate_html_report(custom_output, output_dir)
+        
+        if html_report:
+            print(f'\n[-] Analysis complete! Results are stored in: {output_dir}')
+            print('\n[-] You can find the following reports:')
+            print(f'    - Custom rules report: {custom_output}')
+            print(f'    - HTML report: {html_report}')
+        else:
+            print('\n[!] Failed to generate HTML report')
+            
+    except subprocess.CalledProcessError as e:
+        print(f'\n[!] Error running semgrep analysis with custom rules: {str(e)}')
+        exit(1)
 
 if __name__ == '__main__':
     main()
