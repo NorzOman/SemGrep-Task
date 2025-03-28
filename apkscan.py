@@ -81,7 +81,7 @@ def install_requirements():
         try:
             jadx_url = "https://github.com/skylot/jadx/releases/download/v1.5.1/jadx-1.5.1.zip"
             zip_path = os.path.join(jadx_dir, "jadx.zip")
-            print('[-] Downloading jadx...')
+            print('[-] Downloading jadx..(This may take a while depending on net speed).')
             urllib.request.urlretrieve(jadx_url, zip_path)
             
             print('[-] Extracting jadx...')
@@ -202,9 +202,28 @@ def install_globally():
         print(f"[!] Installation failed: {str(e)}")
         exit(1)
 
+def initialize_tool_directory():
+    """Initialize tool directory and copy rules if needed"""
+    # Create tool directory if it doesn't exist
+    os.makedirs(TOOL_DIR, exist_ok=True)
+    
+    # Check if rules exist in tool directory
+    if not os.path.exists(RULES_DIR) or not os.listdir(RULES_DIR):
+        # Check current directory for rules
+        current_rules = os.path.join(os.getcwd(), 'rules')
+        if os.path.exists(current_rules):
+            print(f'[-] Copying rules to {RULES_DIR}')
+            shutil.copytree(current_rules, RULES_DIR, dirs_exist_ok=True)
+        else:
+            print("[!] Warning: Rules folder not found in current directory")
+            print(f"    Please ensure rules are present in {RULES_DIR}")
+
 def main():
     # Show banner first
     banner()
+    
+    # Initialize tool directory and rules
+    initialize_tool_directory()
     
     parser = argparse.ArgumentParser(
         description='''
