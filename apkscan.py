@@ -15,6 +15,8 @@ import argparse
 is_jadx = False
 is_pip = False
 is_semgrep = False
+TOOL_DIR = os.path.expanduser('~/apkscantool')
+RULES_DIR = os.path.join(TOOL_DIR, 'rules')
 
 # Function to print the banner
 def banner():
@@ -30,6 +32,9 @@ def banner():
 def check_requirements():
     global is_jadx, is_semgrep, is_pip
     
+    # Create tool directory if it doesn't exist
+    os.makedirs(TOOL_DIR, exist_ok=True)
+    
     # Check OS
     os_name = platform.uname().system.lower()
     if "windows" in os_name:
@@ -40,7 +45,7 @@ def check_requirements():
         exit(1)
 
     # Check required tools
-    jadx_path = os.path.expanduser('~/SemGrepTool/jadx/bin/jadx')
+    jadx_path = os.path.join(TOOL_DIR, 'jadx/bin/jadx')
     if os.path.exists(jadx_path):
         is_jadx = True
     
@@ -70,8 +75,7 @@ def install_requirements():
             exit(1)
 
     if not is_jadx:
-        tool_dir = os.path.expanduser('~/SemGrepTool')
-        jadx_dir = os.path.join(tool_dir, 'jadx')
+        jadx_dir = os.path.join(TOOL_DIR, 'jadx')
         os.makedirs(jadx_dir, exist_ok=True)
 
         try:
@@ -150,6 +154,27 @@ def generate_html_report(custom_output, output_dir):
         print(f'\n[!] Error generating HTML report: {str(e)}')
         return None
 
+def setup_rules_directory():
+    """Ensure rules directory exists in the correct location"""
+    # Check current directory for rules
+    current_rules = os.path.join(os.getcwd(), 'rules')
+    
+    # Create tool rules directory if it doesn't exist
+    os.makedirs(RULES_DIR, exist_ok=True)
+    
+    if os.path.exists(current_rules):
+        # Copy rules to tool directory if not already there
+        if not os.path.exists(RULES_DIR) or not os.listdir(RULES_DIR):
+            shutil.copytree(current_rules, RULES_DIR, dirs_exist_ok=True)
+        return RULES_DIR
+    elif os.path.exists(RULES_DIR) and os.listdir(RULES_DIR):
+        return RULES_DIR
+    else:
+        print("[!] Error: Rules folder not found! Please try:")
+        print("    1. Git clone the repository again to get the rules folder")
+        print("    2. Place the rules folder in the current directory or in ~/apkscantool/")
+        exit(1)
+
 def install_globally():
     if os.geteuid() != 0:
         print("[!] This installation requires root privileges. Please run with sudo.")
@@ -165,6 +190,9 @@ def install_globally():
         
         # Make it executable
         os.chmod(install_path, 0o755)
+        
+        # Setup rules directory
+        setup_rules_directory()
         
         print("[-] Successfully installed! You can now use 'apkscan' command globally.")
         print("    Example usage:")
@@ -218,6 +246,9 @@ Example usage:
     if not args.apk or not args.output:
         parser.error("Both --apk and --output are required unless --install is specified")
 
+    # Setup rules directory before analysis
+    rules_path = setup_rules_directory()
+
     if not args.skip_dependencies_check:
         print("[-] Checking requirements...")
         check_requirements()
@@ -241,7 +272,7 @@ Example usage:
     # Decompile APK
     print('[-] Decompiling APK...')
     try:
-        subprocess.run([os.path.expanduser('~/SemGrepTool/jadx/bin/jadx'), 
+        subprocess.run([os.path.join(TOOL_DIR, 'jadx/bin/jadx'),
                        '-d', decompiled_dir, args.apk], check=True)
     except subprocess.CalledProcessError as e:
         print(f'[!] Error decompiling APK: {str(e)}')
@@ -249,13 +280,12 @@ Example usage:
 
     # Run semgrep analysis
     print('[-] Running semgrep analysis...')
-    custom_rules_path = os.path.join(os.getcwd(), 'rules')
     custom_output = os.path.join(reports_dir, 'semgrep_results.json')
     
     try:
         subprocess.run([
             'semgrep', 'scan',
-            '--config', custom_rules_path,
+            '--config', rules_path,
             '--output', custom_output,
             '--json',
             decompiled_dir
