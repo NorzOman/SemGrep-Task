@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 
 import os
-import time
-import urllib.request
-import zipfile
-import datetime
-import shutil
-import platform
-import subprocess
-import json
 import argparse
+import shutil
+import subprocess
+import datetime
 
-# Defining global variables
-is_jadx = False
-is_pip = False
-is_semgrep = False
-TOOL_DIR = os.path.expanduser('~/apkscantool')
-RULES_DIR = os.path.join(TOOL_DIR, 'rules')
+try:
+    CURRENT_DIR = os.getcwd()
+except:
+    print("\n[ERROR-CODE-01] Unable to get current working directory.")
+    exit(1)
+
+RULE_DIR = os.path.join(CURRENT_DIR, "rules")
+OUTPUT_DIR = os.path.join(CURRENT_DIR, "output")
+INPUT_DIR = os.path.join(CURRENT_DIR, "input")
 
 # Function to print the banner
 def banner():
@@ -28,298 +26,228 @@ def banner():
                                         -- by @h1dden --
     """)
 
+def panic():
+    print(r"""
+      ______     ______  _______     _____  _______   _________            _______     _       ____  _____  _____   ______  
+    .' ____ \  .' ___  ||_   __ \   |_   _||_   __ \ |  _   _  |          |_   __ \   / \     |_   \|_   _||_   _|.' ___  | 
+    | (___ \_|/ .'   \_|  | |__) |    | |    | |__) ||_/ | | \_|  ______    | |__) | / _ \      |   \ | |    | | / .'   \_| 
+     _.____`. | |         |  __ /     | |    |  ___/     | |     |______|   |  ___/ / ___ \     | |\ \| |    | | | |        
+    | \____) |\ `.___.'\ _| |  \ \_  _| |_  _| |_       _| |_              _| |_  _/ /   \ \_  _| |_\   |_  _| |_\ `.___.'\ 
+     \______.' `.____ .'|____| |___||_____||_____|     |_____|            |_____||____| |____||_____|\____||_____|`.____ .' 
+                                                                                                                        """)
 
-def check_requirements():
-    global is_jadx, is_semgrep, is_pip
-    
-    # Create tool directory if it doesn't exist
-    os.makedirs(TOOL_DIR, exist_ok=True)
-    
-    # Check OS
-    os_name = platform.uname().system.lower()
-    if "windows" in os_name:
-        print('[!] Windows not supported by the script')
-        exit(1)
-    elif "linux" not in os_name:
-        print('[!] Only Linux is supported by this script')
-        exit(1)
-
-    # Check required tools
-    jadx_path = os.path.join(TOOL_DIR, 'jadx/bin/jadx')
-    if os.path.exists(jadx_path):
-        is_jadx = True
-    
-    if shutil.which("semgrep"):
-        is_semgrep = True
-    
-    if shutil.which("pip") or shutil.which("pip3"):
-        is_pip = True
-
-def install_requirements():
-    global is_pip, is_semgrep, is_jadx
-
-    if not is_pip:
-        try:
-            subprocess.run(['sudo', 'apt', 'install', '-y', 'python3-pip'], check=True)
-            is_pip = True
-        except subprocess.CalledProcessError:
-            print('[!] Failed to install pip')
-            exit(1)
-
-    if not is_semgrep:
-        try:
-            subprocess.run(['python3', '-m', 'pip', 'install', 'semgrep', '--break-system-packages'], check=True)
-            is_semgrep = True
-        except subprocess.CalledProcessError:
-            print('[!] Failed to install semgrep')
-            exit(1)
-
-    if not is_jadx:
-        jadx_dir = os.path.join(TOOL_DIR, 'jadx')
-        os.makedirs(jadx_dir, exist_ok=True)
-
-        try:
-            jadx_url = "https://github.com/skylot/jadx/releases/download/v1.5.1/jadx-1.5.1.zip"
-            zip_path = os.path.join(jadx_dir, "jadx.zip")
-            print('[-] Downloading jadx..(This may take a while depending on net speed).')
-            urllib.request.urlretrieve(jadx_url, zip_path)
-            
-            print('[-] Extracting jadx...')
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(jadx_dir)
-            
-            jadx_bin = os.path.join(jadx_dir, 'bin', 'jadx')
-            os.chmod(jadx_bin, 0o755)
-            is_jadx = True
-            os.remove(zip_path)
-        except Exception as e:
-            print(f'[!] Error installing jadx: {str(e)}')
-            exit(1)
-
-def generate_html_report(custom_output, output_dir):
+def check_tool(tool_name, version_arg="--version"):
     try:
-        html_content = """
-        <html>
-        <head>
-            <title>Semgrep Analysis Report</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 40px; }
-                h1 { color: #333; }
-                .finding { 
-                    border: 1px solid #ddd;
-                    padding: 15px;
-                    margin: 10px 0;
-                    border-radius: 5px;
-                }
-                .severity-high { border-left: 5px solid #ff4444; }
-                .severity-medium { border-left: 5px solid #ffbb33; }
-                .severity-low { border-left: 5px solid #00C851; }
-                .section { margin-bottom: 30px; }
-            </style>
-        </head>
-        <body>
-            <h1>Semgrep Analysis Report</h1>
-        """
+        result = subprocess.run(
+            [tool_name, version_arg],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+        output = result.stdout.decode().strip() or result.stderr.decode().strip()
+        return "Working"
+    except FileNotFoundError as e:
+        return e
+    except subprocess.CalledProcessError as e:
+        return e
 
-        # Process custom rules results
-        with open(custom_output) as f:
-            custom_data = json.load(f)
-        
-        html_content += "<div class='section'><h2>Custom Rules Results</h2>"
-        if custom_data.get('results'):
-            for finding in custom_data['results']:
-                severity = finding.get('extra', {}).get('severity', 'unknown')
-                html_content += f"""
-                <div class='finding severity-{severity.lower()}'>
-                    <h3>{finding.get('check_id', 'Unknown Check')}</h3>
-                    <p><strong>Severity:</strong> {severity}</p>
-                    <p><strong>Message:</strong> {finding.get('extra', {}).get('message', 'No message available')}</p>
-                    <p><strong>Path:</strong> {finding.get('path', 'Unknown path')}</p>
-                    <p><strong>Line:</strong> {finding.get('start', {}).get('line', 'Unknown line')}</p>
-                    <p><strong>Code:</strong> <pre>{finding.get('extra', {}).get('lines', 'No code available')}</pre></p>
-                </div>
-                """
-        else:
-            html_content += "<p>No findings from custom rules</p>"
-            
-        html_content += "</div></body></html>"
 
-        # Write HTML report
-        html_report = os.path.join(output_dir, 'semgrep_report.html')
-        with open(html_report, 'w') as f:
-            f.write(html_content)
-        
-        return html_report
-    except Exception as e:
-        print(f'\n[!] Error generating HTML report: {str(e)}')
-        return None
-
-def setup_rules_directory():
-    """Ensure rules directory exists in the correct location"""
-    # Check current directory for rules
-    current_rules = os.path.join(os.getcwd(), 'rules')
+def check():
+    # First check the os , if its windows , quit the session
+    if os.name == 'nt':
+        print("\n[ERROR-CODE-O2] Windows OS detected.")
+        exit(1)
     
-    # Create tool rules directory if it doesn't exist
-    os.makedirs(RULES_DIR, exist_ok=True)
+    # Given that this insnt windows anymore , it might be linux so lets check if its kali
+    try:
+        with open("/etc/os-release") as f:
+            os_info = f.read().lower()
+            if "kali" in os_info:
+                print("\n[INFO] Kali Linux detected.")
+            else:
+                print("\n[ERROR-CODE-O3] This script is made kali-specific only")
+                print("[BYPASS] Install semgrep and jadx manually and add to path, and use --skip-check to bypass this check")
+                exit(1)
+    except FileNotFoundError:
+        print("\n[WARNING-CODE-01] /etc/os-release file not found. Unable to determine OS. Still continuing....")
+
+
+    # Checking if all the directories exist
+    if not os.path.exists(RULE_DIR):
+        print(f"\n[ERRO-CODE-04] Rules directory does not exist: {RULE_DIR}")
+        exit(1)
     
-    if os.path.exists(current_rules):
-        # Copy rules to tool directory if not already there
-        if not os.path.exists(RULES_DIR) or not os.listdir(RULES_DIR):
-            shutil.copytree(current_rules, RULES_DIR, dirs_exist_ok=True)
-        return RULES_DIR
-    elif os.path.exists(RULES_DIR) and os.listdir(RULES_DIR):
-        return RULES_DIR
+    if not os.path.exists(OUTPUT_DIR):
+        print(f"\n[ERROR-CODE-05] Output directory does not exist: {OUTPUT_DIR}")
+        exit(1)
+    
+    if not os.path.exists(INPUT_DIR):
+        print(f"\n[ERROR-CODE-06] Input directory does not exist: {INPUT_DIR}")
+        exit(1)
+
+
+    # Checking if the required tools are installed
+    jadx_path = shutil.which("jadx")
+    if not jadx_path:
+        print("\n[WARNING-CODE-02] JADX is not installed or not in PATH.")
+
+        print("\n[INFO] Installing JADX...")
+        try:
+            subprocess.run(["sudo","apt", "install", "jadx"], check=True)
+            print("\n[INFO] JADX installed successfully.")
+            print("[INFO] Now checking if JADX is working...")
+            out_jadx = check_tool("jadx")
+            if out_jadx == "Working":
+                print("\n[INFO] JADX is working fine.")
+            else:
+                print("\n[ERROR-CODE-07] JADX is not working properly.")
+                print(f"Reason: {out_jadx}")
+        except subprocess.CalledProcessError as e:
+            print(f"\n[ERROR-CODE-07] Failed to install JADX: {e}")
+            exit(1)
     else:
-        print("[!] Error: Rules folder not found! Please try:")
-        print("    1. Git clone the repository again to get the rules folder")
-        print("    2. Place the rules folder in the current directory or in ~/apkscantool/")
-        exit(1)
+        print("\n[INFO] JADX is already installed.")
 
-def install_globally():
-    if os.geteuid() != 0:
-        print("[!] This installation requires root privileges. Please run with sudo.")
+
+    semgrep_path = shutil.which("semgrep")
+    if not semgrep_path:
+        print("\n[WARNING-CODE-O3] Semgrep is not installed or not in PATH. Nothing to worry about.")
+
+        print("\n[INFO] Installing semgrep...")
+        try:
+            subprocess.run(["pip","install", "semgrep", "--break-system-packages"], check=True)
+            print("\n[INFO] Semgrep installed successfully.")
+            print("[INFO] Now checking if semgrep is working...")
+            out_semgrep = check_tool("semgrep")
+            if out_semgrep == "Working":
+                print("\n[INFO] Semgrep is working fine.")
+            else:
+                print("\n[ERROR-CODE-07] Semgrep is not working properly.")
+                print(f"Reason: {out_semgrep}")
+
+        except subprocess.CalledProcessError as e:
+            print(f"\n[ERROR-CODE-08] Failed to install semgrep: {e}")
+            exit(1)
+    else:
+        print("\n[INFO] Semgrep is already installed.")
+
+
+def scan(apk_path):
+    # First lets check if the path exists:
+    if not os.path.exists(apk_path):
+        print(f"\n[ERROR-CODE-09] APK file does not exist: {apk_path}")
         exit(1)
+    
+    # Now since we have the apk , first lets try to decode it with 
+    
+    # First copy the apk into the input directory
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    input_path = os.path.join(INPUT_DIR, timestamp)
+    output_path = os.path.join(OUTPUT_DIR, timestamp)
     
     try:
-        # Get the absolute path of the current script
-        script_path = os.path.abspath(__file__)
-        install_path = "/usr/local/bin/apkscan"
-        
-        # Copy the script to /usr/local/bin
-        shutil.copy2(script_path, install_path)
-        
-        # Make it executable
-        os.chmod(install_path, 0o755)
-        
-        # Setup rules directory
-        setup_rules_directory()
-        
-        print("[-] Successfully installed! You can now use 'apkscan' command globally.")
-        print("    Example usage:")
-        print("    apkscan -a app.apk -o output_dir")
-        exit(0)
+        os.makedirs(input_path, exist_ok=True)
+        os.makedirs(output_path, exist_ok=True)
+        print(f"\n[INFO] Created input and output directories: {input_path}, {output_path}")
     except Exception as e:
-        print(f"[!] Installation failed: {str(e)}")
+        print(f"\n[WARNING-CODE-04] Script Panic , Failed to create directories : {e}")
+
+    try:
+        shutil.copy(apk_path, input_path)
+        print(f"\n[INFO] APK file copied to input directory: {input_path}")
+    except Exception as e:
+        print(f"\n[WARNING-CODE-05] Script Panic , Failed to copy apk : {e}")
+    
+    # Now lets decode the apk using jadx
+    try:
+        print(f"\n[INFO] Decompiling APK using JADX...(Might take some time)")
+        result = subprocess.run(
+            [
+                "sudo",
+                "jadx",
+                "-d", output_path,
+                apk_path
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+    except subprocess.CalledProcessError as e:
+        panic()
+        print(f"\n[ERROR-CODE-10] Failed to decompile APK: {e}")
+        print("Reason: This could be due to issues with JADX or the APK itself.")
+        exit(1)
+    
+    # Now lets run semgrep on the output directory
+    # First using custom rules folder and store custom.json in output directory and 
+
+    # then using the default rules and store default.json in output directory
+    # First: Using custom rules and storing custom.json
+    try:
+        print(f"\n[INFO] Running Semgrep with custom rules...(Might take some time)")
+        result = subprocess.run(
+            [
+                "semgrep",
+                "--config", RULE_DIR,
+                "--json",
+                "-o", os.path.join(output_path, "custom.json"),
+                output_path
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+    except subprocess.CalledProcessError as e:
+        panic()
+        print(f"\n[ERROR-CODE-11] Failed to run Semgrep with custom rules: {e}")
+        print("Reason: This could be due to issues with Semgrep or the output directory.")
+        print("stderr:", e.stderr.decode())
         exit(1)
 
-def initialize_tool_directory():
-    """Initialize tool directory and copy rules if needed"""
-    # Create tool directory if it doesn't exist
-    os.makedirs(TOOL_DIR, exist_ok=True)
+    # Then: Using default (auto) rules and storing default.json
+    try:
+        print(f"\n[INFO] Running Semgrep with default rules...(Might take some time)")
+        result = subprocess.run(
+            [
+                "semgrep",
+                "--config", "auto",
+                "--json",
+                "-o", os.path.join(output_path, "default.json"),
+                output_path
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+    except subprocess.CalledProcessError as e:
+        panic()
+        print(f"\n[ERROR-CODE-12] Failed to run Semgrep with default rules: {e}")
+        print("Reason: This could be due to issues with Semgrep or the output directory.")
+        print("stderr:", e.stderr.decode())
+        exit(1)
+
+    print(f"\n[INFO] Semgrep scan completed. Results saved to {output_path}")
+    print(f"\n[INFO] Custom rules output: {os.path.join(output_path, 'custom.json')}")
+    print(f"\n[INFO] Default rules output: {os.path.join(output_path, 'default.json')}")
+    print(f"\n[INFO] Decompiled APK output: {output_path}")
     
-    # Check if rules exist in tool directory
-    if not os.path.exists(RULES_DIR) or not os.listdir(RULES_DIR):
-        # Check current directory for rules
-        current_rules = os.path.join(os.getcwd(), 'rules')
-        if os.path.exists(current_rules):
-            print(f'[-] Copying rules to {RULES_DIR}')
-            shutil.copytree(current_rules, RULES_DIR, dirs_exist_ok=True)
-        else:
-            print("[!] Warning: Rules folder not found in current directory")
-            print(f"    Please ensure rules are present in {RULES_DIR}")
+
+
 
 def main():
-    # Show banner first
     banner()
-    
-    # Initialize tool directory and rules
-    initialize_tool_directory()
-    
-    parser = argparse.ArgumentParser(
-        description='''
-Semgrep Analysis Tool for Android APKs
--------------------------------------
-A tool for automated security analysis of Android APK files using Semgrep.
-Decompiles APK files and scans for security vulnerabilities using custom rules.
 
-Example usage:
-  apkscan -a app.apk -o output_dir
-  apkscan --apk app.apk --output output_dir --skip-dependencies-check
-  sudo apkscan --install    # To install globally
-''',
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    
-    parser.add_argument('--install',
-                      action='store_true',
-                      help='Install the script globally as "apkscan" command')
-    
-    parser.add_argument('-a', '--apk', 
-                      help='Path to the APK file to analyze')
-    
-    parser.add_argument('-o', '--output',
-                      help='Output directory for analysis results')
-    
-    parser.add_argument('-s', '--skip-dependencies-check',
-                      action='store_true',
-                      help='Skip checking and installing dependencies')
-
+    parser = argparse.ArgumentParser(description="APK Scanner")
+    parser.add_argument('-a', '--apk', help='Path to APK file', required=True)
+    parser.add_argument('--skip-check', action='store_true', help='Skip tool check')
     args = parser.parse_args()
 
-    # Handle installation if --install is specified
-    if args.install:
-        install_globally()
-        return  # Exit after installation
+    if args.skip_check:
+        print("\n[INFO] Skipping tool check...")
+    else:
+        check()
 
-    # Validate required arguments for normal operation
-    if not args.apk or not args.output:
-        parser.error("Both --apk and --output are required unless --install is specified")
+    apk_path = args.apk
+    scan(apk_path)
 
-    # Setup rules directory before analysis
-    rules_path = setup_rules_directory()
-
-    if not args.skip_dependencies_check:
-        print("[-] Checking requirements...")
-        check_requirements()
-        if not all([is_jadx, is_semgrep, is_pip]):
-            print('[-] Installing missing requirements...')
-            install_requirements()
-
-    if not os.path.exists(args.apk):
-        print('[!] APK file not found!')
-        exit(1)
-
-    # Create output directory if it doesn't exist
-    os.makedirs(args.output, exist_ok=True)
-    
-    # Create analysis subdirectories
-    decompiled_dir = os.path.join(args.output, 'decompiled')
-    reports_dir = os.path.join(args.output, 'reports')
-    os.makedirs(decompiled_dir, exist_ok=True)
-    os.makedirs(reports_dir, exist_ok=True)
-
-    # Decompile APK
-    print('[-] Decompiling APK...')
-    try:
-        subprocess.run([os.path.join(TOOL_DIR, 'jadx/bin/jadx'),
-                       '-d', decompiled_dir, args.apk], check=True)
-    except subprocess.CalledProcessError as e:
-        print(f'[!] Error decompiling APK: {str(e)}')
-        exit(1)
-
-    # Run semgrep analysis
-    print('[-] Running semgrep analysis...')
-    custom_output = os.path.join(reports_dir, 'semgrep_results.json')
-    
-    try:
-        subprocess.run([
-            'semgrep', 'scan',
-            '--config', rules_path,
-            '--output', custom_output,
-            '--json',
-            decompiled_dir
-        ], check=True)
-        
-        html_report = generate_html_report(custom_output, reports_dir)
-        if html_report:
-            print(f'[-] Analysis complete! Results are stored in: {args.output}')
-            print('[-] Generated reports:')
-            print(f'    - JSON report: {custom_output}')
-            print(f'    - HTML report: {html_report}')
-        
-    except subprocess.CalledProcessError as e:
-        print(f'[!] Error running semgrep analysis: {str(e)}')
-        exit(1)
-
-if __name__ == '__main__':
-    main()
+main()

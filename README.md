@@ -5,83 +5,61 @@ A powerful automated security analysis tool for Android APKs using Semgrep and J
 ## ✨ Features
 
 - 🔍 **Automated Scanning**: Seamlessly decompiles APKs and scans for security vulnerabilities
-- 📊 **Rich Reporting**: Generates both JSON and HTML reports with detailed findings
-- 🚀 **Easy Installation**: One-command global installation
-- 📁 **Organized Output**: Structured output with decompiled code and scan results
-- 🎯 **Custom Rules**: Utilizes specialized Semgrep rules for Android security
+- 📊 **JSON Reports**: Generates detailed findings in JSON format
+- 🚀 **Simple Usage**: Just clone and run
+- 📁 **Organized Output**: Timestamp-based output structure
+- 🎯 **Dual Scanning**: Uses both custom and default Semgrep rules
 
 ## 🔧 Prerequisites
 
-- Linux-based operating system
+- Kali Linux (script is Kali-specific)
 - Python 3.x
-- OpenJDK 17+ (for JADX)
-- Internet connection (for initial setup)
+- Internet connection (for tool installation)
 
-## ⚡ Quick Installation
+## ⚡ Quick Start
 
-1. **Install OpenJDK** (if not already installed):
-   ```bash
-   sudo apt update
-   sudo apt install openjdk-17-jdk
-   ```
-
-2. **Get the tool**:
+1. **Clone the repository**:
    ```bash
    git clone https://github.com/yourusername/apk-scanner.git
    cd apk-scanner
    ```
 
-3. **Install globally**:
+2. **Run the scanner**:
    ```bash
-   sudo python3 apkscan.py --install
+   python3 apkscan.py -a /path/to/your.apk
    ```
-
-## 📝 Usage
-
-Basic scan:
-```bash
-apkscan -a target.apk -o output_dir
-```
-
-Options:
-```bash
-apkscan --help
-```
-
-Example workflow:
-```bash
-cd ~/Downloads
-apkscan -a suspicious.apk -o scan_results
-```
 
 ## 📂 Output Structure
 
 ```
-output_dir/
-├── decompiled/         # Decompiled APK source
-└── reports/
-    ├── semgrep_results.json   # Detailed findings in JSON
-    └── semgrep_report.html    # User-friendly HTML report
+repository/
+├── input/
+│   └── YYYYMMDD_HHMMSS/  # Timestamp folder containing input APK
+└── output/
+    └── YYYYMMDD_HHMMSS/  # Timestamp folder containing:
+        ├── custom.json   # Results from custom rules
+        ├── default.json  # Results from default Semgrep rules
+        └── sources/      # Decompiled APK source code
 ```
 
-## 🛠️ Additional Options
+## 🛠️ Command Options
 
 ```bash
-apkscan -a <apk_file> -o <output_dir> [options]
-  -s, --skip-dependencies-check    Skip dependency verification
-  --install                        Install tool globally
+python3 apkscan.py -a <apk_file> [options]
+  --skip-check    Skip dependency verification
 ```
 
-## 📊 Reports
+## ⚠️ Script Panic
 
-The tool generates two report formats:
-- **HTML Report**: User-friendly interface with:
-  - Color-coded severity indicators
-  - Detailed vulnerability descriptions
-  - Code snippets and locations
-  - Quick navigation
-- **JSON Report**: Machine-readable format for:
-  - Integration with other tools
-  - Custom analysis
-  - Data processing
+If you see the "SCRIPT PANIC" ASCII art banner, it indicates a critical error, typically related to JADX decompilation. Common causes include:
+- Corrupted APK file
+- JADX installation issues
+- Insufficient permissions
+- Memory constraints
+
+## 📝 Notes
+
+- The script will automatically install required dependencies (JADX and Semgrep)
+- Results are organized by timestamp for easy tracking
+- Both custom and default Semgrep rules are applied automatically
 
